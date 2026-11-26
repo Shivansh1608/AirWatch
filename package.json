@@ -1,0 +1,17 @@
+{
+  "name": "airwatch-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AirWatch - Production-grade Real-Time AQI Monitoring & Air Quality Intelligence Platform for Indian Cities",
+  "scripts": {
+    "dev": "concurrently \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
+    "client": "npm run dev --prefix client",
+    "server": "npm run dev --prefix server",
+    "build:client": "npm run build --prefix client",
+    "test:server": "npm test --prefix server",
+    "test:client": "npm test --prefix client"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
