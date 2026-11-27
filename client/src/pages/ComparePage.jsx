@@ -19,17 +19,19 @@ const AVAILABLE_CITIES = [
   'Delhi',
   'Mumbai',
   'Bengaluru',
+  'London',
+  'New York',
+  'Tokyo',
+  'Dubai',
+  'Paris',
+  'Singapore',
   'Lucknow',
-  'Mathura',
-  'Kolkata',
-  'Hyderabad',
-  'Chennai',
-  'Ahmedabad',
-  'Jaipur'
+  'Mathura'
 ];
 
 export default function ComparePage() {
-  const [selectedCities, setSelectedCities] = useState(['Delhi', 'Mumbai', 'Lucknow']);
+  const [selectedCities, setSelectedCities] = useState(['Delhi', 'London', 'Tokyo']);
+  const [customInput, setCustomInput] = useState('');
 
   const { data: comparisons = [], isLoading } = useQuery({
     queryKey: ['compare', selectedCities],
@@ -76,16 +78,46 @@ export default function ComparePage() {
         </p>
       </div>
 
-      {/* City Selector Pills */}
-      <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
+      {/* City Selector Pills & Search */}
+      <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
         <div className="flex items-center justify-between text-xs">
           <span className="font-semibold text-slate-700 dark:text-slate-300">
-            Select 2 to 4 cities to compare:
+            Select 2 to 4 cities worldwide to compare:
           </span>
           <span className="text-slate-400">
             {selectedCities.length} of 4 selected (min 2)
           </span>
         </div>
+
+        {/* Add custom world city form */}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (customInput.trim() && !selectedCities.includes(customInput.trim())) {
+              if (selectedCities.length < 4) {
+                setSelectedCities([...selectedCities, customInput.trim()]);
+              }
+              setCustomInput('');
+            }
+          }}
+          className="flex items-center gap-2 max-w-md"
+        >
+          <input
+            type="text"
+            value={customInput}
+            onChange={(e) => setCustomInput(e.target.value)}
+            placeholder="Add any world city (e.g. Sydney, Berlin, Cairo)..."
+            className="flex-1 px-3.5 py-2 rounded-xl text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-white"
+          />
+          <button
+            type="submit"
+            disabled={!customInput.trim() || selectedCities.length >= 4}
+            className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold disabled:opacity-50 flex items-center gap-1"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Add
+          </button>
+        </form>
 
         <div className="flex flex-wrap gap-2">
           {AVAILABLE_CITIES.map((city) => {

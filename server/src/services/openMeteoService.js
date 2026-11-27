@@ -1,13 +1,14 @@
 import axios from 'axios';
 import { memoryCache } from '../utils/cache.js';
 import { calculateCPCB_AQI } from './cpcbCalculator.js';
+import { POPULAR_INDIAN_CITIES } from '../constants/indianCities.js';
 
 const OM_AQ_URL = 'https://air-quality-api.open-meteo.com/v1/air-quality';
 const OM_WEATHER_URL = 'https://api.open-meteo.com/v1/forecast';
 const OM_GEOCODE_URL = 'https://geocoding-api.open-meteo.com/v1/search';
 
 /**
- * Fetch air quality from Open-Meteo with CPCB AQI calculation and caching
+ * Fetch air quality from Open-Meteo with CPCB AQI calculation and caching for any coordinates globally
  */
 export async function getOpenMeteoAirQuality(lat, lon) {
   const cacheKey = `om_aq_${lat.toFixed(3)}_${lon.toFixed(3)}`;
@@ -20,7 +21,7 @@ export async function getOpenMeteoAirQuality(lat, lon) {
         latitude: lat,
         longitude: lon,
         hourly: 'pm10,pm2_5,carbon_monoxide,nitrogen_dioxide,sulphur_dioxide,ozone',
-        timezone: 'Asia/Kolkata',
+        timezone: 'auto',
         forecast_days: 2
       },
       timeout: 6000
@@ -29,7 +30,6 @@ export async function getOpenMeteoAirQuality(lat, lon) {
     const hourly = response.data.hourly;
     const now = new Date();
 
-    // Map hourly forecast array
     const forecast = [];
     const times = hourly.time || [];
 
@@ -54,8 +54,8 @@ export async function getOpenMeteoAirQuality(lat, lon) {
       const dateObj = new Date(times[i]);
       forecast.push({
         timestamp: dateObj.toISOString(),
-        time: dateObj.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }),
-        date: dateObj.toLocaleDateString('en-IN', { weekday: 'short', month: 'short', day: 'numeric' }),
+        time: dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }),
+        date: dateObj.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }),
         aqi: cpcb.aqi,
         category: cpcb.category,
         dominantPollutant: cpcb.dominantPollutant,
@@ -72,7 +72,6 @@ export async function getOpenMeteoAirQuality(lat, lon) {
       });
     }
 
-    // Current reading is the first forecast hour or closest to now
     const current = forecast[0] || null;
 
     const result = {
@@ -92,7 +91,7 @@ export async function getOpenMeteoAirQuality(lat, lon) {
 }
 
 /**
- * Fetch surface weather parameters (temperature, humidity, wind, pressure)
+ * Fetch surface weather parameters (temperature, humidity, wind, pressure) anywhere globally
  */
 export async function getOpenMeteoWeather(lat, lon) {
   const cacheKey = `om_weather_${lat.toFixed(3)}_${lon.toFixed(3)}`;
@@ -105,7 +104,7 @@ export async function getOpenMeteoWeather(lat, lon) {
         latitude: lat,
         longitude: lon,
         current: 'temperature_2m,relative_humidity_2m,surface_pressure,wind_speed_10m,wind_direction_10m,weather_code',
-        timezone: 'Asia/Kolkata'
+        timezone: 'auto'
       },
       timeout: 6000
     });
@@ -143,12 +142,13 @@ export async function getOpenMeteoWeather(lat, lon) {
 }
 
 /**
- * Search Indian cities using Open-Meteo Geocoding
+ * Search cities globally anywhere in the world using Open-Meteo Geocoding
  */
-export async function searchIndianCities(query) {
+export async function searchGlobalCities(query) {
   if (!query || query.trim().length < 2) return [];
 
-  const cacheKey = `om_geo_${query.trim().toLowerCase()}`;
+  const cleanQuery = query.trim().toLowerCase();
+  const cacheKey = `om_geo_${cleanQuery}`;
   const cached = memoryCache.get(cacheKey);
   if (cached) return cached;
 
@@ -156,24 +156,22 @@ export async function searchIndianCities(query) {
     const response = await axios.get(OM_GEOCODE_URL, {
       params: {
         name: query.trim(),
-        count: 10,
+        count: 12,
         language: 'en',
         format: 'json'
       },
       timeout: 5000
     });
 
-    const results = (response.data.results || [])
-      // Prioritize/filter to India
-      .filter((r) => r.country_code === 'IN' || r.country === 'India')
-      .map((r) => ({
-        name: r.name,
-        state: r.admin1 || r.country,
-        country: r.country,
-        lat: r.latitude,
-        lon: r.longitude,
-        slug: `${r.name.toLowerCase().replace(/\s+/g, '-')}-${(r.admin1 || 'in').toLowerCase().replace(/\s+/g, '-')}`
-      }));
+    const results = (response.data.results || []).map((r) => ({
+      name: r.name,
+      state: r.admin1 || '',
+      country: r.country || '',
+      countryCode: r.country_code || '',
+      lat: r.latitude,
+      lon: r.longitude,
+      slug: `${r.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${(r.country_code || 'loc').toLowerCase()}`
+    }));
 
     memoryCache.set(cacheKey, results, 3600); // 1h cache
     return results;
@@ -181,6 +179,39 @@ export async function searchIndianCities(query) {
     console.warn('Open-Meteo Geocoding error:', error.message);
     return [];
   }
+}
+
+export const searchIndianCities = searchGlobalCities;
+
+/**
+ * Geocode any city name in the world to latitude and longitude
+ */
+export async function geocodeCity(cityName) {
+  if (!cityName) return null;
+
+  // 1. Check local pre-seeded list first
+  const local = POPULAR_INDIAN_CITIES.find(
+    (c) => c.slug.toLowerCase() === cityName.toLowerCase() || c.name.toLowerCase() === cityName.toLowerCase()
+  );
+  if (local) {
+    return {
+      name: local.name,
+      state: local.state,
+      country: 'India',
+      countryCode: 'IN',
+      lat: local.lat,
+      lon: local.lon,
+      slug: local.slug
+    };
+  }
+
+  // 2. Query global geocoding API
+  const list = await searchGlobalCities(cityName);
+  if (list && list.length > 0) {
+    return list[0];
+  }
+
+  return null;
 }
 
 function getConditionText(code) {

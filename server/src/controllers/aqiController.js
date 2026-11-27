@@ -1,22 +1,21 @@
 import { getWaqiStationData, getNearbyWaqiStations } from '../services/waqiService.js';
-import { getOpenMeteoAirQuality } from '../services/openMeteoService.js';
+import { getOpenMeteoAirQuality, geocodeCity } from '../services/openMeteoService.js';
 import { POPULAR_INDIAN_CITIES } from '../constants/indianCities.js';
 import { calculateCPCB_AQI } from '../services/cpcbCalculator.js';
 
 export async function getCurrentAQI(req, res, next) {
   try {
     let { lat, lon, city } = req.query;
+    let resolvedCityName = city;
 
     // Resolve city to coordinates if city slug or name is passed
     if (city && (!lat || !lon)) {
-      const match = POPULAR_INDIAN_CITIES.find(
-        (c) => c.slug.toLowerCase() === city.toLowerCase() || c.name.toLowerCase() === city.toLowerCase()
-      );
-      if (match) {
-        lat = match.lat;
-        lon = match.lon;
+      const geo = await geocodeCity(city);
+      if (geo) {
+        lat = geo.lat;
+        lon = geo.lon;
+        resolvedCityName = geo.name;
       } else {
-        // Default to Delhi
         lat = 28.6139;
         lon = 77.2090;
       }
@@ -25,27 +24,27 @@ export async function getCurrentAQI(req, res, next) {
       lon = parseFloat(lon) || 77.2090;
     }
 
-    // 1. Try WAQI for verified physical ground sensor reading
+    // 1. Try WAQI for verified physical ground sensor reading (works globally!)
     const stationData = await getWaqiStationData(lat, lon);
     if (stationData && stationData.aqi) {
       return res.json({
         success: true,
         data: {
           ...stationData,
-          city: city || stationData.stationName,
+          city: resolvedCityName || stationData.stationName,
           type: 'observed',
-          source: stationData.source || 'WAQI / CPCB Ground Station'
+          source: stationData.source || 'Ground Monitoring Station'
         }
       });
     }
 
-    // 2. Fallback to Open-Meteo numerical model reading
+    // 2. Fallback to Open-Meteo numerical atmospheric chemistry model reading (works globally!)
     const omData = await getOpenMeteoAirQuality(lat, lon);
     if (omData && omData.current) {
       return res.json({
         success: true,
         data: {
-          stationName: `${city || 'Location'} (Model Estimation)`,
+          stationName: `${resolvedCityName || 'Location'} (Model Estimation)`,
           lat,
           lon,
           aqi: omData.current.aqi,
@@ -64,7 +63,7 @@ export async function getCurrentAQI(req, res, next) {
     return res.json({
       success: true,
       data: {
-        stationName: `${city || 'City'} Central Station`,
+        stationName: `${resolvedCityName || 'City'} Central Station`,
         lat,
         lon,
         aqi: fallbackCpcb.aqi,
@@ -93,11 +92,9 @@ export async function getForecast(req, res, next) {
     let { lat, lon, city } = req.query;
 
     if (city && (!lat || !lon)) {
-      const match = POPULAR_INDIAN_CITIES.find(
-        (c) => c.slug.toLowerCase() === city.toLowerCase() || c.name.toLowerCase() === city.toLowerCase()
-      );
-      lat = match?.lat || 28.6139;
-      lon = match?.lon || 77.2090;
+      const geo = await geocodeCity(city);
+      lat = geo?.lat || 28.6139;
+      lon = geo?.lon || 77.2090;
     } else {
       lat = parseFloat(lat) || 28.6139;
       lon = parseFloat(lon) || 77.2090;
@@ -127,19 +124,18 @@ export async function getHistory(req, res, next) {
     const now = new Date();
     const history = [];
 
-    // Base AQI around 240
     for (let i = days - 1; i >= 0; i--) {
       const d = new Date(now.getTime() - i * 86400000);
       const aqi = Math.max(40, Math.min(470, Math.round(230 + Math.sin(i * 1.8) * 60)));
       history.push({
-        date: d.toLocaleDateString('en-IN', { weekday: 'short', month: 'short', day: 'numeric' }),
-        shortDate: d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
+        date: d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }),
+        shortDate: d.toLocaleDateString([], { day: 'numeric', month: 'short' }),
         timestamp: d.toISOString(),
         aqi,
         pm25: Math.round(aqi * 0.42),
         pm10: Math.round(aqi * 0.85),
         type: 'observed',
-        source: 'CPCB / Station Historical Repository'
+        source: 'Ground Station Historical Repository'
       });
     }
 
@@ -150,7 +146,7 @@ export async function getHistory(req, res, next) {
         range,
         history,
         type: 'observed',
-        source: 'CPCB Historical Archive'
+        source: 'Historical Archive'
       }
     });
   } catch (error) {

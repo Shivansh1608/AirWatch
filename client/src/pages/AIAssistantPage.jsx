@@ -85,19 +85,27 @@ export default function AIAssistantPage() {
         {/* City Switcher */}
         <div className="flex items-center gap-2 text-xs">
           <span className="text-slate-500 font-medium">Context City:</span>
-          <select
+          <input
+            type="text"
             value={city}
             onChange={(e) => setCity(e.target.value)}
-            className="px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-semibold focus:ring-2 focus:ring-emerald-500 outline-none"
-          >
-            <option value="Delhi">Delhi</option>
-            <option value="Mumbai">Mumbai</option>
-            <option value="Bengaluru">Bengaluru</option>
-            <option value="Lucknow">Lucknow</option>
-            <option value="Mathura">Mathura</option>
-            <option value="Kolkata">Kolkata</option>
-            <option value="Hyderabad">Hyderabad</option>
-          </select>
+            placeholder="Any city worldwide..."
+            list="popular-assistant-cities"
+            className="px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-semibold focus:ring-2 focus:ring-emerald-500 outline-none w-44"
+          />
+          <datalist id="popular-assistant-cities">
+            <option value="Delhi" />
+            <option value="Mumbai" />
+            <option value="Bengaluru" />
+            <option value="London" />
+            <option value="New York" />
+            <option value="Tokyo" />
+            <option value="Dubai" />
+            <option value="Paris" />
+            <option value="Singapore" />
+            <option value="Lucknow" />
+            <option value="Mathura" />
+          </datalist>
         </div>
       </div>
 

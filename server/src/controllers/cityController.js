@@ -1,5 +1,5 @@
 import { POPULAR_INDIAN_CITIES } from '../constants/indianCities.js';
-import { searchIndianCities } from '../services/openMeteoService.js';
+import { searchGlobalCities } from '../services/openMeteoService.js';
 
 export async function searchCities(req, res, next) {
   try {
@@ -8,20 +8,21 @@ export async function searchCities(req, res, next) {
       return res.json({ success: true, data: POPULAR_INDIAN_CITIES.slice(0, 8) });
     }
 
-    // 1. Check local pre-seeded list first
+    // 1. Fetch from global Geocoding API
+    const remoteMatches = await searchGlobalCities(q);
+
+    // 2. Check local list for matches
     const localMatches = POPULAR_INDIAN_CITIES.filter(
       (c) => c.name.toLowerCase().includes(q.toLowerCase()) || c.state.toLowerCase().includes(q.toLowerCase())
-    );
+    ).map(c => ({ ...c, country: 'India', countryCode: 'IN' }));
 
-    // 2. Fetch from Open-Meteo Geocoding
-    const remoteMatches = await searchIndianCities(q);
-
-    // Merge and de-duplicate by name
+    // Merge and de-duplicate
     const seen = new Set();
     const merged = [];
 
-    for (const item of [...localMatches, ...remoteMatches]) {
-      const key = `${item.name.toLowerCase()}-${(item.state || '').toLowerCase()}`;
+    // Prioritize direct matches
+    for (const item of [...remoteMatches, ...localMatches]) {
+      const key = `${item.name.toLowerCase()}-${(item.countryCode || item.country || '').toLowerCase()}`;
       if (!seen.has(key)) {
         seen.add(key);
         merged.push(item);
@@ -30,7 +31,7 @@ export async function searchCities(req, res, next) {
 
     return res.json({
       success: true,
-      data: merged.slice(0, 10)
+      data: merged.slice(0, 12)
     });
   } catch (error) {
     next(error);

@@ -1,33 +1,37 @@
 import { POPULAR_INDIAN_CITIES } from '../constants/indianCities.js';
 import { getWaqiStationData } from '../services/waqiService.js';
-import { getOpenMeteoAirQuality } from '../services/openMeteoService.js';
-import { getOpenMeteoWeather } from '../services/openMeteoService.js';
+import { getOpenMeteoAirQuality, getOpenMeteoWeather, geocodeCity } from '../services/openMeteoService.js';
 
 export async function compareCities(req, res, next) {
   try {
     const rawCities = req.query.cities || 'delhi,mumbai,bengaluru';
-    const citySlugs = rawCities.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean).slice(0, 4);
+    const citySlugs = rawCities.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 4);
 
     const comparisons = await Promise.all(
       citySlugs.map(async (slug) => {
-        const found = POPULAR_INDIAN_CITIES.find(
-          (c) => c.slug === slug || c.name.toLowerCase() === slug
-        ) || {
-          name: slug.charAt(0).toUpperCase() + slug.slice(1),
-          state: 'India',
-          slug,
-          lat: 28.6139,
-          lon: 77.2090
-        };
+        let cityInfo = POPULAR_INDIAN_CITIES.find(
+          (c) => c.slug.toLowerCase() === slug.toLowerCase() || c.name.toLowerCase() === slug.toLowerCase()
+        );
 
-        const station = await getWaqiStationData(found.lat, found.lon);
-        const weather = await getOpenMeteoWeather(found.lat, found.lon);
+        if (!cityInfo) {
+          const geo = await geocodeCity(slug);
+          cityInfo = geo || {
+            name: slug.charAt(0).toUpperCase() + slug.slice(1),
+            state: '',
+            slug,
+            lat: 28.6139,
+            lon: 77.2090
+          };
+        }
+
+        const station = await getWaqiStationData(cityInfo.lat, cityInfo.lon);
+        const weather = await getOpenMeteoWeather(cityInfo.lat, cityInfo.lon);
 
         if (station) {
           return {
-            name: found.name,
-            state: found.state,
-            slug: found.slug,
+            name: cityInfo.name,
+            state: cityInfo.state || cityInfo.country || '',
+            slug: cityInfo.slug || cityInfo.name.toLowerCase(),
             aqi: station.aqi,
             category: station.category,
             dominantPollutant: station.dominantPollutant,
@@ -39,11 +43,11 @@ export async function compareCities(req, res, next) {
           };
         }
 
-        const om = await getOpenMeteoAirQuality(found.lat, found.lon);
+        const om = await getOpenMeteoAirQuality(cityInfo.lat, cityInfo.lon);
         return {
-          name: found.name,
-          state: found.state,
-          slug: found.slug,
+          name: cityInfo.name,
+          state: cityInfo.state || cityInfo.country || '',
+          slug: cityInfo.slug || cityInfo.name.toLowerCase(),
           aqi: om?.current?.aqi || 185,
           category: om?.current?.category || 'Moderate',
           dominantPollutant: om?.current?.dominantPollutant || 'PM2.5',
@@ -52,7 +56,7 @@ export async function compareCities(req, res, next) {
             pm10: { value: 140, subIndex: 125, unit: 'µg/m³' }
           },
           weather,
-          source: om?.source || 'CPCB Standard Model',
+          source: om?.source || 'Atmospheric Model',
           type: om?.type || 'forecast',
           timestamp: new Date().toISOString()
         };

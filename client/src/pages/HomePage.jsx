@@ -21,75 +21,80 @@ import PollutantGrid from '../components/dashboard/PollutantGrid';
 import AQICharts from '../components/dashboard/AQICharts';
 import StationMap from '../components/map/StationMap';
 import DataBadge from '../components/common/DataBadge';
-import { MapPin, Sparkles, Building2, RefreshCw } from 'lucide-react';
+import { MapPin, Sparkles, Building2, RefreshCw, Globe2 } from 'lucide-react';
 
 export default function HomePage() {
-  const [selectedCityName, setSelectedCityName] = useState('Delhi');
-  const [selectedCoords, setSelectedCoords] = useState(null);
+  const [activeCity, setActiveCity] = useState({
+    name: 'Delhi',
+    state: 'National Capital Territory',
+    country: 'India',
+    lat: 28.6139,
+    lon: 77.2090
+  });
 
   // Fallback city object from mock registry
   const mockCity =
     INDIAN_CITIES_MOCK.find(
-      (c) => c.name.toLowerCase() === selectedCityName.toLowerCase()
+      (c) => c.name.toLowerCase() === activeCity.name.toLowerCase()
     ) || INDIAN_CITIES_MOCK[0];
 
-  // 1. Fetch live AQI from backend
+  // 1. Fetch live AQI from backend with lat/lon coordinates
   const {
     data: liveAQI,
     isLoading: aqiLoading,
     refetch: refetchAQI,
     isFetching
   } = useQuery({
-    queryKey: ['currentAQI', selectedCityName, selectedCoords],
+    queryKey: ['currentAQI', activeCity.name, activeCity.lat, activeCity.lon],
     queryFn: () =>
-      fetchCurrentAQI(
-        selectedCoords
-          ? { lat: selectedCoords.lat, lon: selectedCoords.lon }
-          : { city: selectedCityName }
-      ),
+      fetchCurrentAQI({
+        lat: activeCity.lat,
+        lon: activeCity.lon,
+        city: activeCity.name
+      }),
     retry: 1
   });
 
-  // 2. Fetch live weather from backend
+  // 2. Fetch live weather from backend with lat/lon coordinates
   const { data: liveWeather } = useQuery({
-    queryKey: ['weather', selectedCityName, selectedCoords],
+    queryKey: ['weather', activeCity.name, activeCity.lat, activeCity.lon],
     queryFn: () =>
-      fetchWeather(
-        selectedCoords
-          ? { lat: selectedCoords.lat, lon: selectedCoords.lon }
-          : { city: selectedCityName }
-      ),
+      fetchWeather({
+        lat: activeCity.lat,
+        lon: activeCity.lon,
+        city: activeCity.name
+      }),
     retry: 1
   });
 
   // 3. Fetch 24-48h forecast
   const { data: forecastData } = useQuery({
-    queryKey: ['forecast', selectedCityName, selectedCoords],
+    queryKey: ['forecast', activeCity.name, activeCity.lat, activeCity.lon],
     queryFn: () =>
-      fetchAQIForecast(
-        selectedCoords
-          ? { lat: selectedCoords.lat, lon: selectedCoords.lon }
-          : { city: selectedCityName }
-      ),
+      fetchAQIForecast({
+        lat: activeCity.lat,
+        lon: activeCity.lon,
+        city: activeCity.name
+      }),
     retry: 1
   });
 
   // 4. Fetch 7d history
   const { data: historyData } = useQuery({
-    queryKey: ['history', selectedCityName],
-    queryFn: () => fetchAQIHistory({ city: selectedCityName, range: '7d' }),
+    queryKey: ['history', activeCity.name],
+    queryFn: () => fetchAQIHistory({ city: activeCity.name, range: '7d' }),
     retry: 1
   });
 
-  // 5. Fetch nearby stations for Leaflet map
+  // 5. Fetch nearby stations for Leaflet map around the active city's coordinates
   const { data: stationsData } = useQuery({
-    queryKey: ['stations', selectedCityName, selectedCoords],
+    queryKey: ['stations', activeCity.lat, activeCity.lon],
     queryFn: () =>
-      fetchNearbyStations(
-        selectedCoords
-          ? { lat: selectedCoords.lat, lon: selectedCoords.lon, radius: 50 }
-          : { lat: mockCity.lat, lon: mockCity.lon, radius: 50 }
-      ),
+      fetchNearbyStations({
+        lat: activeCity.lat,
+        lon: activeCity.lon,
+        radius: 50
+      }),
     retry: 1
   });
 
@@ -101,7 +106,7 @@ export default function HomePage() {
   const source = liveAQI?.source ?? mockCity.source;
   const type = liveAQI?.type ?? mockCity.type;
   const timestamp = liveAQI?.timestamp ?? mockCity.timestamp;
-  const stationName = liveAQI?.stationName ?? mockCity.station;
+  const stationName = liveAQI?.stationName ?? `${activeCity.name} Ground Sensor`;
 
   const weather = liveWeather ?? mockCity.weather;
 
@@ -118,14 +123,37 @@ export default function HomePage() {
 
   const history30d = generateHistoricalTrend(currentAQI, 30);
 
-  const handleSelectCity = (name) => {
-    setSelectedCityName(name);
-    setSelectedCoords(null);
-  };
-
-  const handleUseLocation = ({ lat, lon }) => {
-    setSelectedCoords({ lat, lon });
-    setSelectedCityName('Current Location');
+  const handleSelectCity = (cityObj) => {
+    if (typeof cityObj === 'string') {
+      const match = INDIAN_CITIES_MOCK.find(
+        (c) => c.name.toLowerCase() === cityObj.toLowerCase()
+      );
+      if (match) {
+        setActiveCity({
+          name: match.name,
+          state: match.state,
+          country: 'India',
+          lat: match.lat,
+          lon: match.lon
+        });
+      } else {
+        setActiveCity({
+          name: cityObj,
+          state: '',
+          country: 'Global',
+          lat: 28.6139,
+          lon: 77.2090
+        });
+      }
+    } else if (cityObj && typeof cityObj === 'object') {
+      setActiveCity({
+        name: cityObj.name,
+        state: cityObj.state || '',
+        country: cityObj.country || '',
+        lat: cityObj.lat || 28.6139,
+        lon: cityObj.lon || 77.2090
+      });
+    }
   };
 
   return (
@@ -135,14 +163,14 @@ export default function HomePage() {
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
             <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 mb-2">
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Real-Time Indian Air Quality Intelligence</span>
+              <Globe2 className="w-3.5 h-3.5" />
+              <span>Global Air Quality & Weather Intelligence</span>
             </div>
             <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-slate-900 dark:text-white">
-              Air Quality Dashboard
+              Air Quality & Weather Dashboard
             </h1>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-              CPCB Standard Air Quality Index, Ground Sensors, and Dispersion Telemetry.
+              Search any city worldwide for real-time AQI, atmospheric dispersion, ground sensors, and weather.
             </p>
           </div>
 
@@ -153,14 +181,13 @@ export default function HomePage() {
             className="self-start md:self-auto inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-emerald-300 dark:hover:border-emerald-700 text-slate-700 dark:text-slate-300 shadow-xs transition-colors"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? 'animate-spin text-emerald-500' : ''}`} />
-            <span>Refresh Readings</span>
+            <span>Refresh Telemetry</span>
           </button>
         </div>
 
         <CitySearch
-          currentCity={selectedCityName}
+          currentCity={activeCity.name}
           onSelectCity={handleSelectCity}
-          onUseLocation={handleUseLocation}
         />
       </section>
 
@@ -173,15 +200,17 @@ export default function HomePage() {
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-xl font-bold text-slate-900 dark:text-white">
-                {selectedCityName}
+                {activeCity.name}
               </h2>
-              <span className="text-xs px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-medium">
-                {mockCity.state || 'India'}
-              </span>
+              {(activeCity.state || activeCity.country) && (
+                <span className="text-xs px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-medium">
+                  {[activeCity.state, activeCity.country].filter(Boolean).join(', ')}
+                </span>
+              )}
             </div>
             <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-1">
               <MapPin className="w-3 h-3 text-slate-400" />
-              {stationName}
+              {stationName} ({activeCity.lat.toFixed(4)}°, {activeCity.lon.toFixed(4)}°)
             </p>
           </div>
         </div>
@@ -204,7 +233,7 @@ export default function HomePage() {
         <div className="lg:col-span-7 flex flex-col justify-between space-y-6">
           <HealthAdvisory aqi={currentAQI} />
           <WeatherCard weather={weather} />
-          <PollutionInsights city={selectedCityName} />
+          <PollutionInsights city={activeCity.name} />
         </div>
       </div>
 
@@ -220,9 +249,9 @@ export default function HomePage() {
 
       {/* Interactive Monitoring Stations Map */}
       <StationMap
-        center={[mockCity.lat, mockCity.lon]}
+        center={[activeCity.lat, activeCity.lon]}
         stations={stationsData?.stations || []}
-        cityName={selectedCityName}
+        cityName={activeCity.name}
       />
     </div>
   );
